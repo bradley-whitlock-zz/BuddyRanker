@@ -1,3 +1,4 @@
 python src/ranker.py \
-	--file data/sample_data.csv \
+	--g-secrets client_secret.json \
+	--g-url https://docs.google.com/spreadsheets/d/XXXXXXXXXXX
 	
