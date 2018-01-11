@@ -1,3 +1,4 @@
 *.json
 _env/*
 *.pyc
+*.log

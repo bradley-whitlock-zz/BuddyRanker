@@ -4,24 +4,30 @@ import argparse
 import csv
 import logging
 from spreadsheet import SpreadSheet
+import datetime
 
 class BuddyRanker():
 	def __init__(self, args):
 
-		# Setup logger
+		# Setup Logger
 		self.logger = logging.Logger('BuddyRanker')
 		console = logging.StreamHandler()
 		console.setLevel('DEBUG' if args.debug else 'INFO')
+		formatter = logging.Formatter(fmt='%(asctime)s %(levelname)-5s %(message)s',
+                              datefmt='%Y-%m-%d %H:%M:%S')
+		console.setFormatter(formatter)
 		self.logger.addHandler(console)
 
 		# Setup Goggle Sheets Credentials and options
 		self.SpreadSheet = SpreadSheet(gsecrets=args.g_secrets, url=args.g_url)
 		self.g_scores_sheet = "Scores"
 		self.g_ranking_sheet = "Rankings"
-		self.g_headers = ['Player 1', 'Player 2', 'Wins Player 1', 'Wins Player 2']
-		self.g_rank_header = ["Player", "Rank"]
+		self.g_rank_header = ["Player", "Relative Rank (out of 1000)"]
 		self.ignore_upload = args.g_ignore_upload
+
+		# Setup localdata parametes
 		self.localdata = args.localdata
+		self.headers = ['Player 1', 'Player 2', 'Score Player 1', 'Score Player 2']
 
 		# Bradley Terry related parameters
 		self.init_rank = args.init_rank
@@ -32,59 +38,68 @@ class BuddyRanker():
 		lst = []
 		with open(self.file, 'rb') as csvfile:
 			reader = csv.reader(csvfile, delimiter=',')
-			next(reader, None)
 			for row in reader:
 				if len(row) != 4:
 					self.logger.critical('FATAL: CSV should contain rows with 4 columns only')
 					exit(1)
 				# Keep same format a google sheet
-				lst.append(dict(zip(self.g_headers, row)))
+				lst.append(dict(zip(self.headers, row)))
 		return lst
 
-	def setup_wins(self):
-		wins = {}
+	def get_player_list(self, game_data, headers):
 		players = set()
+		for game in game_data:
+			players.add(game[headers[0]])
+			players.add(game[headers[1]])
+		return list(players)
 
-		if args.localdata != None:
-			data = self.read_local_file()
+	def init_fake_winners(self, game_data, headers):
+		players = self.get_player_list(game_data=game_data, headers=headers)
+		wins = {}
+		for player in players:
+			for opp in players:
+				if opp == player: continue
+				if player not in wins.keys():
+					wins[player] = {opp: 1}
+				else:
+					wins[player][opp] = 1
+		return wins
+
+	def get_game_data(self):
+		if self.localdata != None:
+			game_data = self.read_local_file()
+			headers = self.headers
 		else:
-			data = self.SpreadSheet.open_sheet(spreadsheet=self.g_scores_sheet)
+			game_data = self.SpreadSheet.open_sheet(spreadsheet=self.g_scores_sheet)
+			headers = list(reversed(game_data[0].keys()))
+		return game_data, headers
 
-		for game in data:
-			player1 = game[self.g_headers[0]]
-			player2 = game[self.g_headers[1]]
-			player1_score = int(game[self.g_headers[2]])
-			player2_score = int(game[self.g_headers[3]])
+	def setup_wins(self, game_data, headers):
 
-			players.add(player1)
-			players.add(player2)
-			self.logger.debug("Score Player1: %s, %s  Player2: %s, %s", player1, player1_score, player2, player2_score)
+		wins = self.init_fake_winners(game_data=game_data, headers=headers)
+
+		for game in game_data:
+			player1 = game[headers[0]]
+			player2 = game[headers[1]]
+			player1_score = int(game[headers[2]])
+			player2_score = int(game[headers[3]])
+
+			self.logger.debug("Player1: %s, Score: %s     Player2: %s, Score: %s", player1, player1_score, player2, player2_score)
 
 			# Determine who won game
 			if player1_score > player2_score:
 				self.logger.debug("Player 1 Wins: %s", player1)
-				
-				if player1 not in wins.keys():
-					wins[player1] = {player2: 1}
-				elif player2 not in wins[player1].keys():
-					wins[player1][player2] = 1
-				else:
-					wins[player1][player2] += 1
+				wins[player1][player2] += 1
 
 			elif player2_score > player1_score:
 				self.logger.debug("Player 2 Wins: %s", player2)
-
-				if player2 not in wins.keys():
-					wins[player2] = {player1: 1}
-				elif player1 not in wins[player2].keys():
-					wins[player2][player1] = 1
-				else:
-					wins[player2][player1] += 1
+				wins[player2][player1] += 1
 
 			else:
-				self.logger.critical("ERROR: No Ties allowed, continuing")
+				self.logger.critical("No Ties allowed, continuing")
 
-		return wins, list(players)
+		self.logger.info("Wins calculated: %s", wins)
+		return wins
 
 	def get_games_played(self, wins, player1, player2):
 		tot = 0
@@ -106,7 +121,9 @@ class BuddyRanker():
 		return {k: v * factor for k,v in ranks.iteritems()}
 
 	def train_ranking(self):
-		wins, players = self.setup_wins()
+		game_data, headers = self.get_game_data()
+		wins = self.setup_wins(game_data=game_data, headers=headers)
+		players = self.get_player_list(game_data=game_data, headers=headers)
 		total_wins = {player: sum(wins[player].values()) for player in wins}
 
 		# Generate initial rank vector
@@ -129,9 +146,7 @@ class BuddyRanker():
 			# normalize
 			rank = self.norm_dict(rank)
 			
-			diff = self.get_vector_diff(last_rank.values(), rank.values())
-			
-			if float(diff) < float(self.tol):
+			if float(self.get_vector_diff(last_rank.values(), rank.values())) < float(self.tol):
 				self.logger.info("Converged after %s itterations", itt)
 				break
 			elif itt % 10 == 0:
@@ -155,7 +170,7 @@ class BuddyRanker():
 
 		self.logger.info("Uploading to Google Sheets")
 		self.SpreadSheet.upload_sheet(data=data, spreadsheet=self.g_ranking_sheet)
-			
+		self.logger.info("Completed upload to Google Sheets")	
 
 		 
 if __name__ == '__main__':
@@ -170,7 +185,6 @@ if __name__ == '__main__':
 	parser.add_argument('--g-ignore-upload', action='store_true', help='Pass parameter to avoid uploading results to Goggle Sheets')
 	
 	# Bradley-Terry related paramaters
-
 	parser.add_argument('--init-rank', default=0.5, type=float, help='Initial value 0 < x< 1 to set ranks too')
 	parser.add_argument('--tol', default=1e-3, type=float, help='Convergence tolerance')
 	parser.add_argument('--max-itt', default=1000, type=int, help='Maximum number of itterations of the Bradley Terry model')
