@@ -9,7 +9,16 @@ Friends playing squash looking for a way to rank themselves based on the outcome
 ## Use Cases
 Any 2 player game (ex. squash, cribbage) in which a winner exists and can be recorded on a game by game basis. Players should partake in several games to increase accuracy.
 
-### References
-http://sites.stat.psu.edu/~drh20/papers/bt.pdf
+## How to Setup
+1. Reccommended use with python virtualenv
+2. Setup Sheets Access by createing [Google API Console](https://console.developers.google.com/apis/dashboard) account.
+3. Download secret file (backup somewhere). Should have same fields as `secrets.json`.
+4. Input data into `Scores` Google Sheets, [example data](https://docs.google.com/spreadsheets/d/1XbzocRHCA_xjH-l68kCLWV98r4jpqcSQM8XTk4fTfYQ/edit#gid=0)
+5. Create `Rankings` page by executing run.sh (pip install dependencies if first run)
+6. Optional: Setup Cronjob to update on daily/weekly basis.
 
-https://rubikloud.com/lab/building-a-table-tennis-ranking-model/
+
+### References
+[Paper on Bradley Terry Model](http://sites.stat.psu.edu/~drh20/papers/bt.pdf)
+
+[Similar implementation at Rubikloud](https://rubikloud.com/lab/building-a-table-tennis-ranking-model/)
