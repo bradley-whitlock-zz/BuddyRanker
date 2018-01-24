@@ -11,7 +11,7 @@ Any 2 player game (ex. squash, cribbage) in which a winner exists and can be rec
 
 ## How to Setup
 1. Reccommended use with python virtualenv
-2. Setup Sheets Access by createing [Google API Console](https://console.developers.google.com/apis/dashboard) account.
+2. Setup Sheets Access by creating [Google API Console](https://console.developers.google.com/apis/dashboard) account.
 3. Download secret file (backup somewhere). Should have same fields as `secrets.json`.
 4. Input data into `Scores` Google Sheets, [example data](https://docs.google.com/spreadsheets/d/1XbzocRHCA_xjH-l68kCLWV98r4jpqcSQM8XTk4fTfYQ/edit#gid=0)
 5. Create `Rankings` page by executing run.sh (pip install dependencies if first run)
